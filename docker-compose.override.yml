@@ -1,0 +1,14 @@
+# Configuración específica para desarrollo local
+# Este archivo se carga automáticamente cuando ejecutas docker-compose
+
+version: '3.8'
+
+services:
+  whatsapp-bot:
+    environment:
+      - DEBUG_MODE=true
+      - CACHE_TIMEOUT=60
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 

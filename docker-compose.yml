@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  whatsapp-bot:
+    build: .
+    container_name: whatsapp-bot-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG_MODE=false
+      - CACHE_TIMEOUT=300
+      - MAX_RETRIES=3
+      - REQUEST_TIMEOUT=10.0
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./app.log:/app/app.log
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - whatsapp-network
+
+  # Servicio para desarrollo con hot-reload
+  whatsapp-bot-dev:
+    build: .
+    container_name: whatsapp-bot-api-dev
+    ports:
+      - "8001:8000"
+    environment:
+      - DEBUG_MODE=true
+      - CACHE_TIMEOUT=60
+      - MAX_RETRIES=2
+      - REQUEST_TIMEOUT=5.0
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+    profiles:
+      - dev
+    networks:
+      - whatsapp-network
+
+  # Servicio de pruebas
+  whatsapp-bot-test:
+    build: .
+    container_name: whatsapp-bot-api-test
+    environment:
+      - DEBUG_MODE=true
+      - API_PEDIDOS_URL=https://api.test.com/pedidos
+      - WHATSAPP_API_URL=https://graph.facebook.com/v18.0/test/messages
+      - WHATSAPP_TOKEN=test_token
+      - CACHE_TIMEOUT=60
+      - MAX_RETRIES=1
+      - REQUEST_TIMEOUT=5.0
+    volumes:
+      - .:/app
+    command: ["pytest", "tests/", "-v", "--cov=main", "--cov-report=term-missing"]
+    profiles:
+      - test
+    networks:
+      - whatsapp-network
+
+  # Servicio de logs (opcional)
+  logs-viewer:
+    image: alpine:latest
+    container_name: logs-viewer
+    volumes:
+      - ./logs:/logs
+    command: ["tail", "-f", "/logs/app.log"]
+    profiles:
+      - dev
+      - logs
+    networks:
+      - whatsapp-network
+
+  # Nginx como proxy reverso (opcional)
+  nginx:
+    image: nginx:alpine
+    container_name: whatsapp-bot-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - whatsapp-bot
+    restart: unless-stopped
+    profiles:
+      - production
+    networks:
+      - whatsapp-network
+
+networks:
+  whatsapp-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local 
