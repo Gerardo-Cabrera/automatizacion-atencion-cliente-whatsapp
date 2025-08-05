@@ -84,11 +84,9 @@ class TestPedidoResponse:
     def test_valid_codigo(self):
         """Prueba código válido"""
         pedido = PedidoResponse(
-            codigo="PED-123",
             estado="pendiente",
             fecha="2024-01-01",
             producto="Producto Test",
-            cliente="Cliente Test",
             precio_total="100 USD"
         )
         assert pedido.codigo == "PED-123"
@@ -144,11 +142,9 @@ class TestAsyncFunctions:
         from main import consultar_pedido
         # Mock de respuesta exitosa
         mock_pedido = PedidoResponse(
-            codigo="PED-123",
             estado="pendiente",
             fecha="2024-01-01",
             producto="Producto Test",
-            cliente="Cliente Test",
             precio_total="100 USD"
         )
         mock_api.return_value = mock_pedido

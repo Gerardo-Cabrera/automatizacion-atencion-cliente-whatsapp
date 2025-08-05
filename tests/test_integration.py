@@ -14,11 +14,9 @@ class TestIntegration:
         """Prueba el flujo completo del webhook con éxito"""
         # Mock de la API de pedidos
         mock_pedido = {
-            "codigo": "PED-123",
             "estado": "pendiente",
             "fecha": "2024-01-01",
             "producto": "Producto Test",
-            "cliente": "Cliente Test",
             "precio_total": "100 USD"
         }
         mock_api.return_value = mock_pedido
@@ -118,11 +116,9 @@ class TestIntegration:
     def test_api_pedido_direct_endpoint(self, mock_api):
         """Prueba el endpoint directo de consulta de pedidos"""
         mock_pedido = {
-            "codigo": "PED-123",
             "estado": "pendiente",
             "fecha": "2024-01-01",
             "producto": "Producto Test",
-            "cliente": "Cliente Test",
             "precio_total": "100 USD"
         }
         mock_api.return_value = mock_pedido

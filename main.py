@@ -55,11 +55,9 @@ PROHIBIDAS_REGEX = re.compile(rf"({'|'.join(PALABRAS_PROHIBIDAS)})", re.IGNORECA
 
 # Modelos Pydantic mejorados
 class PedidoResponse(BaseModel):
-    codigo: str
     estado: str
     fecha: str
     producto: str
-    cliente: str
     precio_total: str
 
 class WhatsAppMessage(BaseModel):
@@ -178,11 +176,9 @@ async def consultar_pedido_api(codigo: str, user_id: str) -> Optional[PedidoResp
                         )
                         
                         return PedidoResponse(
-                            codigo=str(pedido.get("codigo", pedido.get("id_pedido", ""))),
                             estado=pedido.get("estado"),
                             fecha=pedido.get("fecha", pedido.get("fechaActualizacion", "")),
                             producto=productos,
-                            cliente=pedido.get("cliente", ""),
                             precio_total=str(pedido.get("precio_total_pedido", pedido.get("precio_total", ""))) + " USD"
                         )
         return None
@@ -259,11 +255,9 @@ async def procesar_codigo_pedido(codigo: str, user_id: str) -> str:
 
     return (
         f"📦 *Estado de tu pedido* 📦\n\n"
-        f"• Código: {pedido.codigo}\n"
         f"• Producto: {pedido.producto}\n"
         f"• Estado: {pedido.estado}\n"
         f"• Fecha: {pedido.fecha}\n"
-        f"• Cliente: {pedido.cliente}\n"
         f"• Total: ${pedido.precio_total}\n\n"
         "¿Necesitas más ayuda? Escribe *ayuda* para opciones."
     )
