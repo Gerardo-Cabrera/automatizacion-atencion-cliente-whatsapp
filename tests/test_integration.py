@@ -16,15 +16,14 @@ class TestIntegration:
         mock_pedido = {
             "codigo": "PED-123",
             "estado": "pendiente",
-            "fechaActualizacion": "2024-01-01T10:00:00Z",
+            "fecha": "2024-01-01",
             "producto": "Producto Test",
-            "cliente": "Cliente Test"
+            "cliente": "Cliente Test",
+            "precio_total": "100 USD"
         }
         mock_api.return_value = mock_pedido
-        
         # Mock del envío de WhatsApp
         mock_send.return_value = None
-        
         # Datos del webhook
         webhook_data = {
             "entry": [{
@@ -40,18 +39,14 @@ class TestIntegration:
                 }]
             }]
         }
-        
         # Ejecutar webhook
         response = client.post("/webhook", json=webhook_data)
-        
         # Verificar respuesta
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        
-        # Verificar que se llamó la API
-        mock_api.assert_called_once_with("PED-123")
-        
+        # Verificar que se llamó la API con ambos argumentos
+        mock_api.assert_called_once_with("PED-123", "1234567890")
         # Verificar que se envió el mensaje
         mock_send.assert_called_once()
     
@@ -91,10 +86,7 @@ class TestIntegration:
     @patch('main.enviar_mensaje_whatsapp')
     def test_webhook_lenguaje_inapropiado(self, mock_send):
         """Prueba el webhook con lenguaje inapropiado"""
-        # Mock del envío de WhatsApp
         mock_send.return_value = None
-        
-        # Datos del webhook
         webhook_data = {
             "entry": [{
                 "changes": [{
@@ -109,48 +101,32 @@ class TestIntegration:
                 }]
             }]
         }
-        
-        # Ejecutar webhook
         response = client.post("/webhook", json=webhook_data)
-        
-        # Verificar respuesta
         assert response.status_code == 200
-        
-        # Verificar que se envió el mensaje de advertencia
         mock_send.assert_called_once()
         args, kwargs = mock_send.call_args
         assert "Lenguaje inapropiado" in args[1]
     
     def test_webhook_invalid_data(self):
         """Prueba el webhook con datos inválidos"""
-        # Datos inválidos
-        invalid_data = {
-            "entry": []  # Entry vacío
-        }
-        
-        # Ejecutar webhook
+        invalid_data = {"entry": []}
         response = client.post("/webhook", json=invalid_data)
-        
-        # Verificar que falla
-        assert response.status_code == 422  # Validation error
+        # El endpoint retorna 422 si entry está vacío
+        assert response.status_code == 422
     
     @patch('main.consultar_pedido_api')
     def test_api_pedido_direct_endpoint(self, mock_api):
         """Prueba el endpoint directo de consulta de pedidos"""
-        # Mock de la API de pedidos
         mock_pedido = {
             "codigo": "PED-123",
             "estado": "pendiente",
-            "fechaActualizacion": "2024-01-01T10:00:00Z",
+            "fecha": "2024-01-01",
             "producto": "Producto Test",
-            "cliente": "Cliente Test"
+            "cliente": "Cliente Test",
+            "precio_total": "100 USD"
         }
         mock_api.return_value = mock_pedido
-        
-        # Consultar pedido directamente
-        response = client.get("/api/v1/pedido/PED-123")
-        
-        # Verificar respuesta
+        response = client.get("/api/v1/pedido/1/PED-123")
         assert response.status_code == 200
         data = response.json()
         assert data["codigo"] == "PED-123"
@@ -159,16 +135,11 @@ class TestIntegration:
     @patch('main.consultar_pedido_api')
     def test_api_pedido_not_found(self, mock_api):
         """Prueba el endpoint de pedido con código inexistente"""
-        # Mock de la API de pedidos retornando None
         mock_api.return_value = None
-        
-        # Consultar pedido inexistente
-        response = client.get("/api/v1/pedido/PED-999")
-        
-        # Verificar respuesta
+        response = client.get("/api/v1/pedido/1/PED-999")
         assert response.status_code == 404
         data = response.json()
-        assert "no encontrado" in data["detail"]
+        assert "no encontrado" in data["detail"].lower()
     
     def test_demo_endpoints(self):
         """Prueba los endpoints de demo"""
@@ -201,15 +172,13 @@ class TestIntegration:
     
     def test_cache_clear_integration(self):
         """Prueba la limpieza de caché en integración"""
-        # Primera llamada
-        response1 = client.get("/cache/clear")
+        import base64
+        credentials = base64.b64encode(b"admin:admin123").decode("utf-8")
+        headers = {"Authorization": f"Basic {credentials}"}
+        response1 = client.get("/cache/clear", headers=headers)
         assert response1.status_code == 200
-        
-        # Segunda llamada (debería funcionar igual)
-        response2 = client.get("/cache/clear")
+        response2 = client.get("/cache/clear", headers=headers)
         assert response2.status_code == 200
-        
-        # Verificar respuestas
         data1 = response1.json()
         data2 = response2.json()
         assert data1["status"] == "success"

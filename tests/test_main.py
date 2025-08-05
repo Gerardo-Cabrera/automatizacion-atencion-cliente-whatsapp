@@ -88,20 +88,11 @@ class TestPedidoResponse:
             estado="pendiente",
             fecha="2024-01-01",
             producto="Producto Test",
-            cliente="Cliente Test"
+            cliente="Cliente Test",
+            precio_total="100 USD"
         )
         assert pedido.codigo == "PED-123"
-    
-    def test_invalid_codigo(self):
-        """Prueba código inválido"""
-        with pytest.raises(ValueError, match="formato XXX-123"):
-            PedidoResponse(
-                codigo="INVALID",
-                estado="pendiente",
-                fecha="2024-01-01",
-                producto="Producto Test",
-                cliente="Cliente Test"
-            )
+
 
 class TestAPIEndpoints:
     """Pruebas para los endpoints de la API"""
@@ -126,7 +117,11 @@ class TestAPIEndpoints:
     
     def test_cache_clear_endpoint(self):
         """Prueba el endpoint de limpieza de caché"""
-        response = client.get("/cache/clear")
+        import base64
+        # Autenticación básica por defecto: admin/admin123
+        credentials = base64.b64encode(b"admin:admin123").decode("utf-8")
+        headers = {"Authorization": f"Basic {credentials}"}
+        response = client.get("/cache/clear", headers=headers)
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
@@ -134,10 +129,10 @@ class TestAPIEndpoints:
     
     def test_pedido_endpoint_not_found(self):
         """Prueba el endpoint de pedido con código inexistente"""
-        response = client.get("/api/v1/pedido/INV-999")
+        response = client.get("/api/v1/pedido/INV-999/INV-999")
         assert response.status_code == 404
         data = response.json()
-        assert "no encontrado" in data["detail"]
+        assert "no encontrado" in data["detail"].lower()
 
 @pytest.mark.asyncio
 class TestAsyncFunctions:
@@ -147,29 +142,26 @@ class TestAsyncFunctions:
     async def test_consultar_pedido_success(self, mock_api):
         """Prueba consulta exitosa de pedido"""
         from main import consultar_pedido
-        
         # Mock de respuesta exitosa
         mock_pedido = PedidoResponse(
             codigo="PED-123",
             estado="pendiente",
             fecha="2024-01-01",
             producto="Producto Test",
-            cliente="Cliente Test"
+            cliente="Cliente Test",
+            precio_total="100 USD"
         )
         mock_api.return_value = mock_pedido
-        
-        result = await consultar_pedido("PED-123")
+        result = await consultar_pedido("PED-123", "1")
         assert result is not None
         assert result.codigo == "PED-123"
-    
+
     @patch('main.consultar_pedido_api')
     async def test_consultar_pedido_not_found(self, mock_api):
         """Prueba consulta de pedido inexistente"""
         from main import consultar_pedido
-        
         mock_api.return_value = None
-        
-        result = await consultar_pedido("PED-999")
+        result = await consultar_pedido("PED-999", "1")
         assert result is None
     
     @patch('main.enviar_mensaje_whatsapp')

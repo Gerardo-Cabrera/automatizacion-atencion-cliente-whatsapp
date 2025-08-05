@@ -40,12 +40,9 @@ settings = Settings()
 
 # Configuración de logging mejorada
 logging.basicConfig(
-    level=logging.INFO if not settings.debug_mode else logging.DEBUG,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('app.log') if not settings.debug_mode else logging.NullHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -54,13 +51,15 @@ PALABRAS_PROHIBIDAS = {
     "estupido", "idiota", "imbecil", "tonto", "pendejo", "pendeja",
     "hijo de puta", "hija de puta", "puta", "cabrón", "cabrona"
 }
-PROHIBIDAS_REGEX = re.compile(rf"\b({'|'.join(PALABRAS_PROHIBIDAS)})\b", re.IGNORECASE)
+PROHIBIDAS_REGEX = re.compile(rf"({'|'.join(PALABRAS_PROHIBIDAS)})", re.IGNORECASE)
 
 # Modelos Pydantic mejorados
 class PedidoResponse(BaseModel):
+    codigo: str
     estado: str
     fecha: str
     producto: str
+    cliente: str
     precio_total: str
 
 class WhatsAppMessage(BaseModel):
@@ -179,10 +178,12 @@ async def consultar_pedido_api(codigo: str, user_id: str) -> Optional[PedidoResp
                         )
                         
                         return PedidoResponse(
+                            codigo=str(pedido.get("codigo", pedido.get("id_pedido", ""))),
                             estado=pedido.get("estado"),
-                            fecha=pedido.get("fecha"),
+                            fecha=pedido.get("fecha", pedido.get("fechaActualizacion", "")),
                             producto=productos,
-                            precio_total=str(pedido.get("precio_total_pedido")) + " USD"
+                            cliente=pedido.get("cliente", ""),
+                            precio_total=str(pedido.get("precio_total_pedido", pedido.get("precio_total", ""))) + " USD"
                         )
         return None
 
@@ -199,51 +200,51 @@ async def consultar_pedido(codigo: str, user_id: str) -> Optional[PedidoResponse
     
     return pedido
 
-def contiene_lenguaje_inapropiado(texto: str) -> bool:
-    """Verifica si el texto contiene lenguaje inapropiado"""
-    return bool(PROHIBIDAS_REGEX.search(texto))
+
+# --- Seguridad: función para sanitizar texto (básica, puede ampliarse) ---
+def sanitizar_texto(texto: str) -> str:
+    return texto.strip()
+
+
+LENGUAJE_INAPROPIADO_MSG = (
+    "⚠️ *Lenguaje inapropiado detectado*\n\n"
+    "Por favor mantén un tono respetuoso.\n"
+    "Estoy aquí para ayudarte con tu pedido."
+)
+
+def contiene_lenguaje_inapropiado(texto: str) -> str | None:
+    """Devuelve el mensaje de advertencia si el texto contiene lenguaje inapropiado, si no None"""
+    if PROHIBIDAS_REGEX.search(texto):
+        return LENGUAJE_INAPROPIADO_MSG
+    return None
 
 async def enviar_mensaje_whatsapp(numero: str, mensaje: str):
-    """Envía mensaje usando URL y token de .env con mejor manejo de errores"""
+    """Envía mensaje usando la API de WhatsApp definida en settings.whatsapp_api_url y settings.whatsapp_token"""
     logger.info(f"WHATSAPP OUT: {numero} -> {mensaje[:50]}...")
-    
-    if settings.debug_mode:
-        logger.debug(f"[DEBUG MODE] Mensaje simulado enviado a {numero}")
-        return
-    
+    url = settings.whatsapp_api_url
+    token = settings.whatsapp_token
+    payload = {
+        "to": numero,
+        "type": "text",
+        "text": {"body": mensaje}
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
     try:
         async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
-            headers = {
-                "Authorization": f"Bearer {settings.whatsapp_token}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": numero,
-                "text": {"body": mensaje}
-            }
-            response = await client.post(
-                settings.whatsapp_api_url, 
-                json=payload, 
-                headers=headers
-            )
+            response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
-            logger.info(f"Mensaje enviado exitosamente a {numero}")
+            logger.info(f"Mensaje enviado correctamente a {numero}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Error HTTP al enviar mensaje a WhatsApp: {e.response.status_code} - {e.response.text}")
     except Exception as e:
-        logger.error(f"Error enviando mensaje a {numero}: {str(e)}")
-        raise
-
-def procesar_saludo() -> str:
-    return (
-        "¡Hola! 👋 Soy tu asistente virtual.\n\n"
-        "Para consultar tu pedido, envía tu *código de seguimiento*.\n"
-        "Ejemplo: `PED-123`\n\n"
-        "También puedes escribir *ayuda* para más información."
-    )
+        logger.error(f"Error inesperado al enviar mensaje a WhatsApp: {str(e)}")
 
 async def procesar_codigo_pedido(codigo: str, user_id: str) -> str:
     pedido = await consultar_pedido(codigo, user_id)
-    
+
     if not pedido:
         return (
             "❌ *Pedido no encontrado*\n\n"
@@ -251,12 +252,18 @@ async def procesar_codigo_pedido(codigo: str, user_id: str) -> str:
             f"Código: {codigo}\n\n"
             "Verifica los datos e intenta nuevamente."
         )
-    
+
+    # Si el mock retorna un dict, convertirlo a PedidoResponse
+    if isinstance(pedido, dict):
+        pedido = PedidoResponse(**pedido)
+
     return (
         f"📦 *Estado de tu pedido* 📦\n\n"
+        f"• Código: {pedido.codigo}\n"
         f"• Producto: {pedido.producto}\n"
         f"• Estado: {pedido.estado}\n"
         f"• Fecha: {pedido.fecha}\n"
+        f"• Cliente: {pedido.cliente}\n"
         f"• Total: ${pedido.precio_total}\n\n"
         "¿Necesitas más ayuda? Escribe *ayuda* para opciones."
     )
@@ -267,6 +274,15 @@ def procesar_mensaje_desconocido() -> str:
         "Envía tu *código de seguimiento* (ej: `PED-123`)\n"
         "o escribe *hola* para comenzar.\n"
         "Para ayuda, escribe *ayuda*."
+    )
+
+
+def procesar_saludo() -> str:
+    return (
+        "¡Hola! 👋 Soy tu asistente virtual.\n\n"
+        "Para consultar tu pedido, envía tu *código de seguimiento*.\n"
+        "Ejemplo: `PED-123`\n\n"
+        "También puedes escribir *ayuda* para más información."
     )
 
 def procesar_ayuda() -> str:
@@ -292,29 +308,25 @@ def obtener_mensaje_demo(case: str) -> dict:
     return demo_cases.get(case, demo_cases["saludo"])
 
 async def procesar_mensaje_whatsapp(numero: str, texto: str) -> str:
-    """Procesa mensajes de WhatsApp con mejor lógica"""
-    texto = texto.strip()
-    
-    # Verificar lenguaje inapropiado
-    if contiene_lenguaje_inapropiado(texto):
-        return (
-            "⚠️ *Lenguaje inapropiado detectado*\n\n"
-            "Por favor mantén un tono respetuoso.\n"
-            "Estoy aquí para ayudarte con tu pedido."
-        )
+    """Procesa mensajes de WhatsApp con lógica robusta y segura"""
+
+    texto = sanitizar_texto(texto)
+    advertencia = contiene_lenguaje_inapropiado(texto)
+    if advertencia:
+        return advertencia
 
     # Comandos de ayuda
-    if re.search(r"ayuda|help|comandos", texto, re.IGNORECASE):
+    if re.fullmatch(r"ayuda|help|comandos", texto, re.IGNORECASE):
         return procesar_ayuda()
-    
-    # Saludos
-    if re.search(r"hola|inicio|buenas|hello", texto, re.IGNORECASE):
+
+    # Saludos SOLO si el texto es exactamente un saludo
+    if re.fullmatch(r"hola|inicio|buenas|hello", texto, re.IGNORECASE):
         return procesar_saludo()
-    
-    # Códigos de pedido
-    if match := re.match(r"^[a-zA-Z]{3}[-]?\d{3}$", texto):
-        return await procesar_codigo_pedido(match.group())
-    
+
+    # Si hay texto y no es saludo ni ayuda, procesar como código de pedido
+    if texto:
+        return await procesar_codigo_pedido(texto, numero)
+
     return procesar_mensaje_desconocido()
 
 # Eventos de aplicación
@@ -334,30 +346,59 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+
+
 @app.post('/webhook')
 async def webhook_handler(request: Request):
     """Endpoint principal para webhooks de WhatsApp"""
     try:
         body = await request.json()
-        query_params = request.query_params
-        case = query_params.get("case", "saludo")
-        
-        if settings.debug_mode and case:
-            message = obtener_mensaje_demo(case)
-        else:
-            # Validar estructura del webhook
+        # Validación estricta de datos
+        if not body or "entry" not in body or not isinstance(body["entry"], list) or not body["entry"]:
+            raise HTTPException(status_code=422, detail="Entry no puede estar vacío")
+        try:
             webhook_data = WebhookRequest(**body)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Entry no puede estar vacío")
+        try:
             message = webhook_data.entry[0]['changes'][0]['value']['messages'][0]
-        
-        numero = message["from"]
-        texto = message["text"].strip()
+            numero = message.get("from")
+            texto_raw = message.get("text")
+        except Exception:
+            logger.error("No se pudo extraer el número o texto del mensaje entrante.")
+            raise HTTPException(status_code=400, detail="Estructura de mensaje no válida")
+
+
+        # Extraer el texto real del mensaje, sea string directo o dict con 'body'
+        if isinstance(texto_raw, dict):
+            texto = texto_raw.get("body", "").strip()
+        elif texto_raw is not None:
+            texto = str(texto_raw).strip()
+        else:
+            texto = ""
+
+        if numero is None or texto is None:
+            logger.error("No se pudo extraer el número o texto del mensaje entrante.")
+            raise HTTPException(status_code=400, detail="Estructura de mensaje no válida")
+
         logger.info(f"WHATSAPP IN: {numero} -> {texto}")
+
+
+        # Procesar siempre el mensaje a través de la función centralizada
+        if not texto:
+            raise HTTPException(status_code=422, detail="Mensaje no válido o vacío")
 
         respuesta = await procesar_mensaje_whatsapp(numero, texto)
         await enviar_mensaje_whatsapp(numero, respuesta)
-        
+
+        # Si la respuesta es la advertencia de lenguaje inapropiado, informar explícitamente
+        if respuesta == LENGUAJE_INAPROPIADO_MSG:
+            return {"status": "success", "message": "Lenguaje inapropiado detectado"}
         return {"status": "success", "message": "Mensaje procesado correctamente"}
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.exception(f"Error en webhook: {str(e)}")
         raise HTTPException(
@@ -365,11 +406,19 @@ async def webhook_handler(request: Request):
             detail="Error procesando el mensaje"
         )
 
+
 @app.get("/api/v1/pedido/{user_id}/{codigo}", response_model=PedidoResponse)
 async def obtener_pedido(user_id: str, codigo: str):
     """Endpoint para consultar pedidos directamente"""
+    # Si user_id o código contienen lenguaje inapropiado, mostrar advertencia
+    advertencia_user = contiene_lenguaje_inapropiado(user_id)
+    advertencia_codigo = contiene_lenguaje_inapropiado(codigo)
+    if advertencia_user or advertencia_codigo:
+        raise HTTPException(
+            status_code=400,
+            detail=advertencia_user or advertencia_codigo
+        )
     pedido = await consultar_pedido(codigo, user_id)
-
     if pedido:
         return pedido
     raise HTTPException(
@@ -396,9 +445,25 @@ async def health_check():
         "debug_mode": settings.debug_mode
     }
 
+from fastapi import Depends
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
+
+security = HTTPBasic()
+
+def verificar_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    # Usuario y contraseña de admin por variables de entorno (mejor que hardcode)
+    admin_user = os.getenv("ADMIN_USER", "admin")
+    admin_pass = os.getenv("ADMIN_PASS", "admin123")
+    correct_user = secrets.compare_digest(credentials.username, admin_user)
+    correct_pass = secrets.compare_digest(credentials.password, admin_pass)
+    if not (correct_user and correct_pass):
+        raise HTTPException(status_code=401, detail="No autorizado")
+    return True
+
 @app.get("/cache/clear")
-async def clear_cache():
-    """Endpoint para limpiar el caché manualmente"""
+async def clear_cache(autorizado: bool = Depends(verificar_admin)):
+    """Endpoint para limpiar el caché manualmente (ahora protegido)"""
     pedidos_cache.cache.clear()
     return {"status": "success", "message": "Caché limpiado"}
 

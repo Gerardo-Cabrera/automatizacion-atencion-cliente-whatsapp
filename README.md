@@ -290,7 +290,27 @@ El proyecto incluye GitHub Actions para:
 Para soporte técnico o preguntas:
 - Revisa la documentación en `/`
 - Consulta los logs en `app.log`
-- Verifica la configuración en `.env` 
+- Verifica la configuración en `.env`
+
+## Changelog
+
+### 2025-08-05
+- **Filtro de lenguaje:** Si el usuario ingresa una palabra prohibida, el bot responde SIEMPRE con un mensaje de advertencia, incluso si coincide con el formato de código.
+- **Sanitización:** El texto de entrada es sanitizado antes de procesar comandos o validaciones.
+- **Caché:** El caché sigue siendo en memoria, pero ahora está protegido contra acceso no autorizado.
+
+#### Variables de entorno adicionales
+- `ADMIN_USER`: Usuario admin para limpiar caché (por defecto: `admin`)
+- `ADMIN_PASS`: Contraseña admin para limpiar caché (por defecto: `admin123`)
+
+#### Respuesta ante lenguaje inapropiado
+Si el usuario escribe una palabra prohibida, el bot responde:
+```
+⚠️ *Lenguaje inapropiado detectado*
+
+Por favor mantén un tono respetuoso.
+Estoy aquí para ayudarte con tu pedido.
+```
 
 ## Demo
 Se puede probar la API en el siguiente enlace:
