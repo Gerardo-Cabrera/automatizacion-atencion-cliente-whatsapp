@@ -58,12 +58,10 @@ PROHIBIDAS_REGEX = re.compile(rf"\b({'|'.join(PALABRAS_PROHIBIDAS)})\b", re.IGNO
 
 # Modelos Pydantic mejorados
 class PedidoResponse(BaseModel):
-    codigo: str
     estado: str
     fecha: str
     producto: str
-    cliente: str
-    precio_total: float
+    precio_total: str
 
 class WhatsAppMessage(BaseModel):
     from_num: str
@@ -181,11 +179,10 @@ async def consultar_pedido_api(codigo: str, user_id: str) -> Optional[PedidoResp
                         )
                         
                         return PedidoResponse(
-                            codigo=str(pedido.get("id_pedido")),
                             estado=pedido.get("estado"),
                             fecha=pedido.get("fecha"),
                             producto=productos,
-                            precio_total=pedido.get("precio_total_pedido")
+                            precio_total=str(pedido.get("precio_total_pedido")) + " USD"
                         )
         return None
 
@@ -257,7 +254,6 @@ async def procesar_codigo_pedido(codigo: str, user_id: str) -> str:
     
     return (
         f"📦 *Estado de tu pedido* 📦\n\n"
-        f"• Código: `{pedido.codigo}`\n"
         f"• Producto: {pedido.producto}\n"
         f"• Estado: {pedido.estado}\n"
         f"• Fecha: {pedido.fecha}\n"
@@ -373,7 +369,7 @@ async def webhook_handler(request: Request):
 async def obtener_pedido(user_id: str, codigo: str):
     """Endpoint para consultar pedidos directamente"""
     pedido = await consultar_pedido(codigo, user_id)
-    
+
     if pedido:
         return pedido
     raise HTTPException(
