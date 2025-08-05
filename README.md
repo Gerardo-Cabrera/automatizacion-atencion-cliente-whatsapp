@@ -285,13 +285,15 @@ El proyecto incluye GitHub Actions para:
 4. Push a la rama
 5. Abre un Pull Request
 
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT.
-
 ## 🆘 Soporte
 
 Para soporte técnico o preguntas:
 - Revisa la documentación en `/`
 - Consulta los logs en `app.log`
 - Verifica la configuración en `.env` 
+
+## Demo
+### Se puede probar la API en el siguiente enlace:
+https://automatizacion-atencion-cliente-whatsapp.onrender.com/
+
+Desarrollado por [Neo-Gerardo]
