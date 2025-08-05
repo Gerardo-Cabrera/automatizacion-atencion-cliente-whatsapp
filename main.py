@@ -63,13 +63,7 @@ class PedidoResponse(BaseModel):
     fecha: str
     producto: str
     cliente: str
-    
-    @field_validator('codigo')
-    @classmethod
-    def validate_codigo(cls, v):
-        if not re.match(r'^[A-Z]{3}-\d{3}$', v):
-            raise ValueError('Código debe tener formato XXX-123')
-        return v
+    precio_total: float
 
 class WhatsAppMessage(BaseModel):
     from_num: str
@@ -148,49 +142,63 @@ def manejar_errores_api(func):
     return wrapper
 
 @manejar_errores_api
-async def consultar_pedido_api(codigo: str) -> Optional[PedidoResponse]:
+async def consultar_pedido_api(codigo: str, user_id: str) -> Optional[PedidoResponse]:
     """Consulta la API externa de pedidos usando URL de .env"""
     async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
         headers = {
             "X-Request-ID": str(uuid.uuid4()),
             "User-Agent": "WhatsApp-Bot/1.0.0"
         }
+        
+        # Obtener TODOS los pedidos
         response = await client.get(
-            f"{settings.api_pedidos_url}/{codigo}",
+            settings.api_pedidos_url,
             headers=headers
         )
         response.raise_for_status()
         data = response.json()
         
-        return PedidoResponse(
-            codigo=data["codigo"],
-            estado=data["estado"],
-            fecha=data["fechaActualizacion"],
-            producto=data["producto"],
-            cliente=data["cliente"]
-        )
+        # Convertir user_id a entero si es necesario
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            user_id_int = None
+        
+        # Buscar en la estructura anidada
+        for usuario in data.get("pedidos", []):
+            # Coincidencia por user_id (entero o string)
+            if (usuario.get("user_id") == user_id_int or 
+                str(usuario.get("user_id")) == user_id):
+                
+                for pedido in usuario.get("datos_pedido", []):
+                    # Coincidencia por código de pedido
+                    if (str(pedido.get("id_pedido")) == codigo or 
+                        pedido.get("codigo") == codigo):
 
-async def consultar_pedido(codigo: str) -> Optional[PedidoResponse]:
-    """Consulta un pedido con caché mejorado"""
-    # Limpiar caché expirado periódicamente
-    if len(pedidos_cache.cache) > 100:  # Limpiar cuando hay muchos elementos
-        pedidos_cache.clear_expired()
-    
-    codigo = codigo.upper().strip().replace(" ", "")
-    
-    # Validar formato del código
-    if not re.match(r'^[A-Z]{3}-\d{3}$', codigo):
+                        # Obtener nombres de productos
+                        productos = ", ".join(
+                            [item["producto"] for item in pedido.get("items", [])]
+                        )
+                        
+                        return PedidoResponse(
+                            codigo=str(pedido.get("id_pedido")),
+                            estado=pedido.get("estado"),
+                            fecha=pedido.get("fecha"),
+                            producto=productos,
+                            precio_total=pedido.get("precio_total_pedido")
+                        )
         return None
+
+async def consultar_pedido(codigo: str, user_id: str) -> Optional[PedidoResponse]:
+    """Consulta un pedido con caché mejorado"""
+    cache_key = f"{user_id}:{codigo}"
+    if cached := pedidos_cache.get(cache_key):
+        return cached
     
-    cached_pedido = pedidos_cache.get(codigo)
-    if cached_pedido:
-        logger.debug(f"Usando caché para pedido {codigo}")
-        return cached_pedido
-    
-    pedido = await consultar_pedido_api(codigo)
-    
+    # Solo si no está en caché, llamar a la API
+    pedido = await consultar_pedido_api(codigo, user_id)
     if pedido:
-        pedidos_cache.set(codigo, pedido)
+        pedidos_cache.set(cache_key, pedido)
     
     return pedido
 
@@ -236,35 +244,24 @@ def procesar_saludo() -> str:
         "También puedes escribir *ayuda* para más información."
     )
 
-async def procesar_codigo_pedido(codigo: str) -> str:
-    pedido = await consultar_pedido(codigo)
+async def procesar_codigo_pedido(codigo: str, user_id: str) -> str:
+    pedido = await consultar_pedido(codigo, user_id)
     
     if not pedido:
         return (
             "❌ *Pedido no encontrado*\n\n"
-            "Verifica el código e inténtalo nuevamente.\n"
-            "Formato correcto: `XXX-123`\n"
-            "Ejemplo: `PED-123`"
+            f"Usuario: {user_id}\n"
+            f"Código: {codigo}\n\n"
+            "Verifica los datos e intenta nuevamente."
         )
-    
-    # Emojis según estado
-    estado_emoji = {
-        "pendiente": "⏳",
-        "en_proceso": "🔄", 
-        "enviado": "📦",
-        "entregado": "✅",
-        "cancelado": "❌"
-    }
-    
-    emoji = estado_emoji.get(pedido.estado.lower(), "📋")
     
     return (
         f"📦 *Estado de tu pedido* 📦\n\n"
         f"• Código: `{pedido.codigo}`\n"
         f"• Producto: {pedido.producto}\n"
-        f"• Estado: {emoji} {pedido.estado}\n"
-        f"• Actualización: {pedido.fecha}\n"
-        f"• Cliente: {pedido.cliente}\n\n"
+        f"• Estado: {pedido.estado}\n"
+        f"• Fecha: {pedido.fecha}\n"
+        f"• Total: ${pedido.precio_total}\n\n"
         "¿Necesitas más ayuda? Escribe *ayuda* para opciones."
     )
 
@@ -372,10 +369,11 @@ async def webhook_handler(request: Request):
             detail="Error procesando el mensaje"
         )
 
-@app.get("/api/v1/pedido/{codigo}", response_model=PedidoResponse)
-async def obtener_pedido(codigo: str):
+@app.get("/api/v1/pedido/{user_id}/{codigo}", response_model=PedidoResponse)
+async def obtener_pedido(user_id: str, codigo: str):
     """Endpoint para consultar pedidos directamente"""
-    pedido = await consultar_pedido(codigo)
+    pedido = await consultar_pedido(codigo, user_id)
+    
     if pedido:
         return pedido
     raise HTTPException(
