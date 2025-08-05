@@ -93,11 +93,6 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - **`1`** - Consultar pedido
 - **`ayuda`** - Mostrar comandos disponibles
 
-### Ejemplos de códigos:
-- `PED-123`
-- `ORD-456`
-- `FAC-789`
-
 ## 🔧 Mejoras Implementadas
 
 ### Versión 2.0.0:
