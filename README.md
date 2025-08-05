@@ -52,7 +52,7 @@ Copia `config.example` a `.env` y configura las siguientes variables:
 
 ```env
 # API de pedidos
-API_PEDIDOS_URL=https://tu-api-pedidos.com/pedidos
+API_PEDIDOS_URL=https://mock.apidog.com/m1/1024543-1011214-default/api/v1/pedidos-whatsapp
 
 # WhatsApp Business API
 WHATSAPP_API_URL=https://graph.facebook.com/v18.0/TU_PHONE_NUMBER_ID/messages
@@ -81,7 +81,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 - **`/`** - Documentación interactiva (Swagger UI)
 - **`/webhook`** - Webhook principal de WhatsApp
-- **`/api/v1/pedido/{codigo}`** - Consulta directa de pedidos
+- **`/api/v1/pedido/{user_id}/{codigo}`** - Consulta directa de pedidos. Se especifica el **user_id** (número celular con el código de país correspondiente) para simular de mejor manera la consulta
 - **`/health`** - Estado del sistema
 - **`/cache/clear`** - Limpiar caché manualmente
 - **`/demo`** - Pruebas con casos demo
@@ -90,7 +90,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ### Comandos disponibles:
 - **`hola`** - Saludo inicial
-- **`XXX-123`** - Consultar pedido (formato: 3 letras + guión + 3 números)
+- **`1`** - Consultar pedido
 - **`ayuda`** - Mostrar comandos disponibles
 
 ### Ejemplos de códigos:
@@ -148,13 +148,13 @@ DEBUG_MODE=true
 - `lenguaje_inapropiado` - Filtrado de contenido
 - `ayuda` - Comandos disponibles
 
-### Probar endpoints:
+### Probar endpoints en local:
 ```bash
 # Health check
 curl http://localhost:8000/health
 
 # Consulta directa
-curl http://localhost:8000/api/v1/pedido/PED-123
+curl http://localhost:8000/api/v1/pedido/+584243711009/1
 
 # Demo
 curl http://localhost:8000/demo?case=saludo
