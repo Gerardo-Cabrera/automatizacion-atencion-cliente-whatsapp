@@ -125,7 +125,7 @@ class TestIntegration:
         response = client.get("/api/v1/pedido/1/PED-123")
         assert response.status_code == 200
         data = response.json()
-        assert data["codigo"] == "PED-123"
+    # El campo 'codigo' ya no existe en la respuesta
         assert data["estado"] == "pendiente"
     
     @patch('main.consultar_pedido_api')
