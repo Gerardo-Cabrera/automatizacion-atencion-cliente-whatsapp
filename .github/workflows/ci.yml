@@ -2,17 +2,24 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      API_PEDIDOS_URL: "https://api.test.com/pedidos"
+      WHATSAPP_API_URL: "https://graph.facebook.com/v18.0/test/messages"
+      WHATSAPP_TOKEN: "test_token"
+      DEBUG_MODE: "true"
+      CACHE_TIMEOUT: "300"
+      MAX_RETRIES: "3"
+      REQUEST_TIMEOUT: "10.0"
     strategy:
       matrix:
         python-version: ['3.9', '3.10', '3.11']
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
