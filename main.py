@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings
@@ -208,7 +209,7 @@ LENGUAJE_INAPROPIADO_MSG = (
     "Estoy aquí para ayudarte con tu pedido."
 )
 
-def contiene_lenguaje_inapropiado(texto: str) -> str | None:
+def contiene_lenguaje_inapropiado(texto: str) -> Optional[str]:
     """Devuelve el mensaje de advertencia si el texto contiene lenguaje inapropiado, si no None"""
     if PROHIBIDAS_REGEX.search(texto):
         return LENGUAJE_INAPROPIADO_MSG
