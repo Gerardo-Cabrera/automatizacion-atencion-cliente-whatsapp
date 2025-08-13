@@ -1,20 +1,19 @@
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Request, status
-from pydantic import BaseModel, field_validator
-from pydantic_settings import BaseSettings
-import re
 import os
-import httpx
-from typing import Dict, Optional, List
+import re
 import logging
 import uuid
+from typing import Optional, Dict, List
 from functools import wraps
 from datetime import datetime, timedelta
 import asyncio
+import httpx
+from fastapi import FastAPI, HTTPException, Request, status
+from pydantic import BaseModel, field_validator
+from pydantic_settings import BaseSettings
 from contextlib import asynccontextmanager
-
 # Configuración exclusiva desde .env
 class Settings(BaseSettings):
+
     api_pedidos_url: str
     whatsapp_api_url: str
     whatsapp_token: str
@@ -22,23 +21,20 @@ class Settings(BaseSettings):
     debug_mode: bool = False
     max_retries: int = 3
     request_timeout: float = 10.0
-
     @field_validator('api_pedidos_url', 'whatsapp_api_url')
-    @classmethod
     def validate_urls(cls, v):
+
         if not v.startswith(('http://', 'https://')):
             raise ValueError('URL debe comenzar con http:// o https://')
         return v
-
     class Config:
+
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
         extra = "ignore"
-
 # Inicializar configuración SIN valores por defecto para URLs/tokens
 settings = Settings()
-
 # Configuración de logging mejorada
 logging.basicConfig(
     level=logging.DEBUG,
@@ -46,50 +42,52 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
-
 # Filtro de lenguaje mejorado
 PALABRAS_PROHIBIDAS = {
     "estupido", "idiota", "imbecil", "tonto", "pendejo", "pendeja",
     "hijo de puta", "hija de puta", "puta", "cabrón", "cabrona"
 }
 PROHIBIDAS_REGEX = re.compile(rf"({'|'.join(PALABRAS_PROHIBIDAS)})", re.IGNORECASE)
-
 # Modelos Pydantic mejorados
 class PedidoResponse(BaseModel):
+
     estado: str
     fecha: str
     producto: str
     precio_total: str
-
 class WhatsAppMessage(BaseModel):
+
     from_num: str
     text: str
-    
     @field_validator('from_num')
     @classmethod
     def validate_phone(cls, v):
+
         # Validar formato de número de teléfono
         if not re.match(r'^\d{10,15}$', v.replace('+', '')):
             raise ValueError('Número de teléfono inválido')
         return v
+class WebhookRequest(BaseModel):
 
+    entry: List[Dict]
 class WebhookRequest(BaseModel):
     entry: List[Dict]
-    
     @field_validator('entry')
     @classmethod
     def validate_entry(cls, v):
+
         if not v:
             raise ValueError('Entry no puede estar vacío')
         return v
-
 # Caché mejorado con TTL
 class CacheManager:
+
     def __init__(self, ttl_seconds: int = 300):
+
         self.cache = {}
         self.ttl = ttl_seconds
-    
     def get(self, key: str):
+
         if key in self.cache:
             data, timestamp = self.cache[key]
             if datetime.now() - timestamp < timedelta(seconds=self.ttl):
@@ -97,11 +95,11 @@ class CacheManager:
             else:
                 del self.cache[key]
         return None
-    
     def set(self, key: str, value):
+
         self.cache[key] = (value, datetime.now())
-    
     def clear_expired(self):
+
         now = datetime.now()
         expired_keys = [
             key for key, (_, timestamp) in self.cache.items()
@@ -109,13 +107,13 @@ class CacheManager:
         ]
         for key in expired_keys:
             del self.cache[key]
-
 pedidos_cache = CacheManager(settings.cache_timeout)
-
 # Decorador mejorado para manejo de errores
 def manejar_errores_api(func):
+
     @wraps(func)
     async def wrapper(*args, **kwargs):
+
         for attempt in range(settings.max_retries):
             try:
                 return await func(*args, **kwargs)
@@ -136,16 +134,15 @@ def manejar_errores_api(func):
                 return None
         return None
     return wrapper
-
 @manejar_errores_api
 async def consultar_pedido_api(codigo: str, user_id: str) -> Optional[PedidoResponse]:
+
     """Consulta la API externa de pedidos usando URL de .env"""
     async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
         headers = {
             "X-Request-ID": str(uuid.uuid4()),
             "User-Agent": "WhatsApp-Bot/1.0.0"
         }
-        
         # Obtener TODOS los pedidos
         response = await client.get(
             settings.api_pedidos_url,
@@ -153,53 +150,55 @@ async def consultar_pedido_api(codigo: str, user_id: str) -> Optional[PedidoResp
         )
         response.raise_for_status()
         data = response.json()
-        
         # Convertir user_id a entero si es necesario
         try:
             user_id_int = int(user_id)
         except ValueError:
             user_id_int = None
-        
         # Buscar en la estructura anidada
         for usuario in data.get("pedidos", []):
             # Coincidencia por user_id (entero o string)
-            if (usuario.get("user_id") == user_id_int or 
+            if (usuario.get("user_id") == user_id_int or
                 str(usuario.get("user_id")) == user_id):
-                
                 for pedido in usuario.get("datos_pedido", []):
                     # Coincidencia por código de pedido
-                    if (str(pedido.get("id_pedido")) == codigo or 
+                    if (str(pedido.get("id_pedido")) == codigo or
                         pedido.get("codigo") == codigo):
-
                         # Obtener nombres de productos
                         productos = ", ".join(
                             [item["producto"] for item in pedido.get("items", [])]
                         )
-                        
                         return PedidoResponse(
                             estado=pedido.get("estado"),
-                            fecha=pedido.get("fecha", pedido.get("fechaActualizacion", "")),
+                            fecha=pedido.get(
+                                "fecha",
+                                pedido.get("fechaActualizacion", "")
+                            ),
                             producto=productos,
-                            precio_total=str(pedido.get("precio_total_pedido", pedido.get("precio_total", ""))) + " USD"
+                            precio_total=(
+                                str(
+                                    pedido.get("precio_total_pedido",
+                                            pedido.get("precio_total", "")
+                                    )
+                                ) + " USD"
+                            )
                         )
         return None
-
 async def consultar_pedido(codigo: str, user_id: str) -> Optional[PedidoResponse]:
+
     """Consulta un pedido con caché mejorado"""
     cache_key = f"{user_id}:{codigo}"
     if cached := pedidos_cache.get(cache_key):
         return cached
-    
     # Solo si no está en caché, llamar a la API
     pedido = await consultar_pedido_api(codigo, user_id)
     if pedido:
         pedidos_cache.set(cache_key, pedido)
-    
     return pedido
-
 
 # --- Seguridad: función para sanitizar texto (básica, puede ampliarse) ---
 def sanitizar_texto(texto: str) -> str:
+
     return texto.strip()
 
 
@@ -210,12 +209,14 @@ LENGUAJE_INAPROPIADO_MSG = (
 )
 
 def contiene_lenguaje_inapropiado(texto: str) -> Optional[str]:
+
     """Devuelve el mensaje de advertencia si el texto contiene lenguaje inapropiado, si no None"""
     if PROHIBIDAS_REGEX.search(texto):
         return LENGUAJE_INAPROPIADO_MSG
     return None
 
 async def enviar_mensaje_whatsapp(numero: str, mensaje: str):
+
     """Envía mensaje usando la API de WhatsApp definida en settings.whatsapp_api_url y settings.whatsapp_token"""
     logger.info(f"WHATSAPP OUT: {numero} -> {mensaje[:50]}...")
     url = settings.whatsapp_api_url
@@ -417,7 +418,7 @@ async def obtener_pedido(user_id: str, codigo: str):
     if pedido:
         return pedido
     raise HTTPException(
-        status_code=404, 
+    status_code=404,
         detail=f"Pedido con código {codigo} no encontrado"
     )
 

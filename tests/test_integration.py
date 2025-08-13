@@ -1,10 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 from main import app
-
 client = TestClient(app)
-
 class TestIntegration:
     """Pruebas de integración para el sistema completo"""
     
@@ -179,6 +177,5 @@ class TestIntegration:
         data2 = response2.json()
         assert data1["status"] == "success"
         assert data2["status"] == "success"
-
 if __name__ == "__main__":
     pytest.main([__file__]) 

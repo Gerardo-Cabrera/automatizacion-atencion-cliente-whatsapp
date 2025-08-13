@@ -1,12 +1,9 @@
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from main import app, procesar_saludo, procesar_ayuda, contiene_lenguaje_inapropiado
 from main import procesar_mensaje_desconocido, CacheManager, PedidoResponse
-
 client = TestClient(app)
-
 class TestWhatsAppBot:
     """Pruebas para el bot de WhatsApp"""
     
@@ -41,7 +38,6 @@ class TestWhatsAppBot:
         assert not contiene_lenguaje_inapropiado("Hola, ¿cómo estás?")
         assert not contiene_lenguaje_inapropiado("Quiero consultar mi pedido")
         assert not contiene_lenguaje_inapropiado("")
-
 class TestCacheManager:
     """Pruebas para el gestor de caché"""
     
@@ -77,7 +73,6 @@ class TestCacheManager:
         
         cache.clear_expired()
         assert len(cache.cache) == 0
-
 class TestPedidoResponse:
     """Pruebas para el modelo de respuesta de pedido"""
     
@@ -90,8 +85,6 @@ class TestPedidoResponse:
             precio_total="100 USD"
         )
     # El campo 'codigo' ya no existe en el modelo PedidoResponse
-
-
 class TestAPIEndpoints:
     """Pruebas para los endpoints de la API"""
     
@@ -131,7 +124,6 @@ class TestAPIEndpoints:
         assert response.status_code == 404
         data = response.json()
         assert "no encontrado" in data["detail"].lower()
-
 @pytest.mark.asyncio
 class TestAsyncFunctions:
     """Pruebas para funciones asíncronas"""
@@ -151,7 +143,6 @@ class TestAsyncFunctions:
         result = await consultar_pedido("PED-123", "1")
         assert result is not None
     # El campo 'codigo' ya no existe en el modelo PedidoResponse
-
     @patch('main.consultar_pedido_api')
     async def test_consultar_pedido_not_found(self, mock_api):
         """Prueba consulta de pedido inexistente"""
@@ -185,6 +176,5 @@ class TestAsyncFunctions:
         result = await procesar_mensaje_whatsapp("1234567890", "Eres un estupido bot")
         assert "Lenguaje inapropiado" in result
         assert "respetuoso" in result
-
 if __name__ == "__main__":
     pytest.main([__file__]) 
